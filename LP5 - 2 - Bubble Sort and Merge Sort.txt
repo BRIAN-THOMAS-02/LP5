@@ -1,0 +1,116 @@
+#include <iostream>
+#include <omp.h>
+
+using namespace std;
+
+void bubble(int *, int);
+void swap(int &, int &);
+void mergesort(int a[], int i, int j);
+void merge(int a[], int i1, int j1, int i2, int j2);
+
+void bubble(int *a, int n) {
+    double start = omp_get_wtime(); // Start time
+    for (int i = 0; i < n; ++i) {
+        int first = i % 2;
+        #pragma omp parallel for shared(a, first)
+        for (int j = first; j < n - 1; j += 2) {
+            if (a[j] > a[j + 1]) {
+                swap(a[j], a[j + 1]);
+            }
+        }
+    }
+}
+
+void swap(int &a, int &b) {
+    int temp = a;
+    a = b;
+    b = temp;
+}
+
+void mergesort(int a[], int i, int j) {
+    int mid;
+    if (i < j) {
+        mid = (i + j) / 2;
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            {
+                mergesort(a, i, mid);
+            }
+
+            #pragma omp section
+            {
+                mergesort(a, mid + 1, j);
+            }
+        }
+        merge(a, i, mid, mid + 1, j);
+    }
+}
+
+void merge(int a[], int i1, int j1, int i2, int j2) {
+    int temp[j2 - i1 + 1]; // Dynamically allocate memory
+    int i, j, k;
+    i = i1;
+    j = i2;
+    k = 0;
+
+    while (i <= j1 && j <= j2) {
+        if (a[i] < a[j]) {
+            temp[k++] = a[i++];
+        } else {
+            temp[k++] = a[j++];
+        }
+    }
+
+    while (i <= j1) {
+        temp[k++] = a[i++];
+    }
+
+    while (j <= j2) {
+        temp[k++] = a[j++];
+    }
+
+    for (i = i1, j = 0; i <= j2; i++, j++) {
+        a[i] = temp[j];
+    }
+}
+
+int main() {
+    int *a, *b, n;
+    cout << "\nEnter total number of elements: ";
+    cin >> n;
+    a = new int[n];
+    b = new int[n];
+
+    cout << "\nEnter elements: ";
+    for (int i = 0; i < n; i++) {
+        cin >> a[i];
+        b[i] = a[i];
+    }
+
+    double start_bubble = omp_get_wtime(); // Start time for bubble sort
+    bubble(a, n);
+    double stop_bubble = omp_get_wtime(); // Stop time for bubble sort
+
+    double start_merge = omp_get_wtime(); // Start time for merge sort
+    mergesort(b, 0, n - 1);
+    double stop_merge = omp_get_wtime(); // Stop time for merge sort
+
+    cout << "\nSorted array using Bubble Sort: ";
+    for (int i = 0; i < n; i++) {
+        cout << a[i] << " ";
+    }
+
+    cout << "\nExecution time for Bubble Sort: " << (stop_bubble - start_bubble) << " seconds\n";
+
+    cout << "\nSorted array using Merge Sort: ";
+    for (int i = 0; i < n; i++) {
+        cout << b[i] << " ";
+    }
+
+    cout << "\nExecution time for Merge Sort: " << (stop_merge - start_merge) << " seconds\n";
+
+    delete[] a;
+    delete[] b;
+    return 0;
+}

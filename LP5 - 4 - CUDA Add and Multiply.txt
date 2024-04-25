@@ -1,0 +1,124 @@
+#include <iostream>
+#include <cuda_runtime.h>
+
+__global__ void addVectors(int* A, int* B, int* C, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        C[i] = A[i] + B[i];
+    }
+}
+
+__global__ void matmul(int* A, int* B, int* C, int N) {
+    int Row = blockIdx.y * blockDim.y + threadIdx.y;
+    int Col = blockIdx.x * blockDim.x + threadIdx.x;
+    if (Row < N && Col < N) {
+        int Pvalue = 0;
+        for (int k = 0; k < N; k++) {
+            Pvalue += A[Row * N + k] * B[k * N + Col];
+        }
+        C[Row * N + Col] = Pvalue;
+    }
+}
+
+int main() {
+    int n = 1000000; // Vector size
+    int N = 512; // Matrix size
+    int size_vec = n * sizeof(int);
+    int size_mat = N * N * sizeof(int);
+
+    // Allocate memory for vectors
+    int *A_vec, *B_vec, *C_vec;
+    cudaMallocHost(&A_vec, size_vec);
+    cudaMallocHost(&B_vec, size_vec);
+    cudaMallocHost(&C_vec, size_vec);
+
+    // Initialize vectors
+    for (int i = 0; i < n; i++) {
+        A_vec[i] = i;
+        B_vec[i] = i * 2;
+    }
+
+    // Allocate memory for matrices
+    int *A_mat, *B_mat, *C_mat;
+    cudaMallocHost(&A_mat, size_mat);
+    cudaMallocHost(&B_mat, size_mat);
+    cudaMallocHost(&C_mat, size_mat);
+
+    // Initialize matrices
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            A_mat[i * N + j] = i * N + j;
+            B_mat[i * N + j] = j * N + i;
+        }
+    }
+
+    // Allocate memory on the device for vectors
+    int *dev_A_vec, *dev_B_vec, *dev_C_vec;
+    cudaMalloc(&dev_A_vec, size_vec);
+    cudaMalloc(&dev_B_vec, size_vec);
+    cudaMalloc(&dev_C_vec, size_vec);
+
+    // Allocate memory on the device for matrices
+    int *dev_A_mat, *dev_B_mat, *dev_C_mat;
+    cudaMalloc(&dev_A_mat, size_mat);
+    cudaMalloc(&dev_B_mat, size_mat);
+    cudaMalloc(&dev_C_mat, size_mat);
+
+    // Copy data from host to device for vectors
+    cudaMemcpy(dev_A_vec, A_vec, size_vec, cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_B_vec, B_vec, size_vec, cudaMemcpyHostToDevice);
+
+    // Copy data from host to device for matrices
+    cudaMemcpy(dev_A_mat, A_mat, size_mat, cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_B_mat, B_mat, size_mat, cudaMemcpyHostToDevice);
+
+    // Launch vector addition kernel
+    int blockSize_vec = 256;
+    int numBlocks_vec = (n + blockSize_vec - 1) / blockSize_vec;
+    addVectors<<<numBlocks_vec, blockSize_vec>>>(dev_A_vec, dev_B_vec, dev_C_vec, n);
+
+    // Launch matrix multiplication kernel
+    dim3 dimBlock_mat(16, 16);
+    dim3 dimGrid_mat(N / dimBlock_mat.x, N / dimBlock_mat.y);
+    matmul<<<dimGrid_mat, dimBlock_mat>>>(dev_A_mat, dev_B_mat, dev_C_mat, N);
+
+    // Copy data from device to host for vectors
+    cudaMemcpy(C_vec, dev_C_vec, size_vec, cudaMemcpyDeviceToHost);
+
+    // Copy data from device to host for matrices
+    cudaMemcpy(C_mat, dev_C_mat, size_mat, cudaMemcpyDeviceToHost);
+
+    // Print the results of vector addition
+    std::cout << "Vector Addition Result:" << std::endl;
+    for (int i = 0; i < 10; i++) {
+        std::cout << C_vec[i] << " ";
+    }
+    std::cout << std::endl;
+
+    // Print the results of matrix multiplication
+    std::cout << "Matrix Multiplication Result (First 10x10):" << std::endl;
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            std::cout << C_mat[i * N + j] << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // Free memory for vectors
+    cudaFree(dev_A_vec);
+    cudaFree(dev_B_vec);
+    cudaFree(dev_C_vec);
+    cudaFreeHost(A_vec);
+    cudaFreeHost(B_vec);
+    cudaFreeHost(C_vec);
+
+    // Free memory for matrices
+    cudaFree(dev_A_mat);
+    cudaFree(dev_B_mat);
+    cudaFree(dev_C_mat);
+    cudaFreeHost(A_mat);
+    cudaFreeHost(B_mat);
+    cudaFreeHost(C_mat);
+
+    return 0;
+}
